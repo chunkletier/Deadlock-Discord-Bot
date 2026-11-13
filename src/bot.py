@@ -4,6 +4,8 @@ from discord import app_commands
 import os
 from dotenv import load_dotenv
 from data_storage import *
+import api
+import formatting
 
 load_dotenv()
 
@@ -55,14 +57,58 @@ async def stats(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
 
     steam_id = await get_user(interaction.user.id)
-    response_message = ''
 
-    if steam_id != None:
-        response_message = f'Your Steam ID32 is `{steam_id}`.'
+    # Eventually improve handling None values and exceptions
+    if steam_id is not None:
+        last_match = (await api.make_request(f"/v1/players/{create_steam_id3(steam_id)}/match-history"))[0]
+        match_id = last_match.get("match_id")
+        hero_id = last_match.get("hero_id")
+        hero_data = await api.make_request(f"/v1/assets/heroes/{hero_id}")
+        hero_name = hero_data.get("name")
+        hero_cards = {
+            "normal": hero_data.get("images").get("icon_hero_card"),
+            "critical": hero_data.get("images").get("hero_card_critical"),
+            "gloat": hero_data.get("images").get("hero_card_gloat")
+        }
+        match_winner = await api.match_won(match_id, steam_id)
+        match_won = match_winner[0] if match_winner is not None else None
+        outcome = "Deadlock"
+        colour = discord.Colour.ash_embed()
+        hero_card = hero_cards["normal"]
+
+        if match_won is not None:
+            if match_won:
+                outcome = "Victory"
+                colour = discord.Colour.brand_green()
+                hero_card = hero_cards["gloat"]
+            else:
+                outcome = "Defeat"
+                colour = discord.Colour.brand_red()
+                hero_card = hero_cards["critical"]
+
+        kda = await api.get_kda(match_id, steam_id)
+
+        description = f"{hero_name} - {outcome}"
+        embed = discord.Embed(
+            title=f"{api.get_match_type(last_match.get("game_mode"), last_match.get("match_mode"))}",
+            description=description,
+            colour=colour
+        )
+        embed.set_thumbnail(url=hero_card)
+        # embed.add_field(name="K/D/A", value=f"`{kda[0]} / {kda[1]} / {kda[2]}`", inline=True)
+        embed.add_field(name="Kills", value=f"`{formatting.pad_string(kda[0])}`", inline=True)
+        embed.add_field(name="Deaths", value=f"`{formatting.pad_string(kda[1])}`", inline=True)
+        embed.add_field(name="Assists", value=f"`{formatting.pad_string(kda[2])}`", inline=True)
+
+
+        # response_message = f'Your Steam ID32 is `{steam_id}`.'
+        # response_message += f'\nThe last hero you played (`ID: {hero_id}`) was {hero_name}.'
+        await interaction.followup.send(embed=embed)
     else:
         response_message = 'You are not linked to a Steam account. Please link your Steam ID using `/link [steam_id]`.'
+        await interaction.followup.send(response_message)
 
-    await interaction.followup.send(response_message)
+    # await interaction.followup.send(response_message,embed=embed)
 
 # Adds the command associated with the given function.
 bot.tree.add_command(link)

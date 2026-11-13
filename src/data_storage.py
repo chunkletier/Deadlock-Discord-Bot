@@ -16,7 +16,7 @@ STEAM_URL = re.compile(r"profiles/(7656119\d{10})(?:/|$)")
 
 def verify_file_exists():
     try:
-        with open(DATA_FILE, "w", encoding="utf-8") as file:
+        with open(DATA_FILE, "x", encoding="utf-8") as file:
             json.dump({}, file)
     except FileExistsError:
         pass
