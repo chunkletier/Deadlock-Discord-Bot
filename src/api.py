@@ -80,13 +80,29 @@ async def match_won(match_id: int, account_id: int) -> list | None:
 
     return None
 
-async def get_kda(match_id: int, account_id: int) -> list:
+async def get_kda(match_id: int, account_id: int) -> dict:
     metadata = await make_request(f"/v1/matches/{match_id}/metadata", None)
     match_info = metadata.get("match_info")
     players = match_info.get("players")
 
     for player in players:
         if player.get("account_id") == int(account_id):
-            return [player.get("kills"), player.get("deaths"), player.get("assists")]
+            return {"kills": player.get("kills"),
+                    "deaths": player.get("deaths"),
+                    "assists": player.get("assists")}
 
-    return [0, 0, 0]
+    return {"kills": None,
+            "deaths": None,
+            "assists": None}
+
+async def get_player_metadata(match_id: int, account_id: int):
+    metadata = await make_request(f"/v1/matches/{match_id}/metadata", None)
+    match_info = metadata.get("match_info")
+    players = match_info.get("players")
+
+    for player in players:
+        if player.get("account_id") == int(account_id):
+            return player
+
+    return None
+

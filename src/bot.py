@@ -14,11 +14,15 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
 bot: commands.Bot = commands.Bot(command_prefix=None, intents=discord.Intents.all())
 
+emojis = {}
+
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
+    verify_data_exists()
 
-    verify_file_exists()
+    app_emojis = await bot.fetch_application_emojis()
+    formatting.emojis = {emoji.name: str(emoji) for emoji in app_emojis}
 
     # Caution:
     # This syncs new commands to each server with the bot.
@@ -58,8 +62,10 @@ async def stats(interaction: discord.Interaction):
 
     steam_id = await get_user(interaction.user.id)
 
+    match_history = (await api.make_request(f"/v1/players/{create_steam_id3(steam_id)}/match-history"))
+
     # Eventually improve handling None values and exceptions
-    if steam_id is not None:
+    if steam_id is not None and len(match_history) != 0:
         last_match = (await api.make_request(f"/v1/players/{create_steam_id3(steam_id)}/match-history"))[0]
         match_id = last_match.get("match_id")
         hero_id = last_match.get("hero_id")
@@ -87,25 +93,41 @@ async def stats(interaction: discord.Interaction):
                 hero_card = hero_cards["critical"]
 
         kda = await api.get_kda(match_id, steam_id)
+        player_metadata = await api.get_player_metadata(match_id, steam_id)
+        stats = player_metadata.get("stats")[-1]
+        souls = stats.get("net_worth")
+        mvp_rank = player_metadata.get("mvp_rank")
+        mvp_text = ""
+        if mvp_rank is not None:
+            mvp_text = f"**[{formatting.number_suffix(player_metadata.get("mvp_rank"))}]** "
 
-        description = f"{hero_name} - {outcome}"
+        souls_emoji = await formatting.get_emoji("souls")
+
+        description = f"{souls_emoji}{formatting.format_thousands(souls)} Souls"
         embed = discord.Embed(
-            title=f"{api.get_match_type(last_match.get("game_mode"), last_match.get("match_mode"))}",
+            title=f"{api.get_match_type(last_match.get("game_mode"), last_match.get("match_mode"))} ({outcome}) - {mvp_text}{hero_name}",
             description=description,
             colour=colour
         )
         embed.set_thumbnail(url=hero_card)
         # embed.add_field(name="K/D/A", value=f"`{kda[0]} / {kda[1]} / {kda[2]}`", inline=True)
-        embed.add_field(name="Kills", value=f"`{formatting.pad_string(kda[0])}`", inline=True)
-        embed.add_field(name="Deaths", value=f"`{formatting.pad_string(kda[1])}`", inline=True)
-        embed.add_field(name="Assists", value=f"`{formatting.pad_string(kda[2])}`", inline=True)
+        embed.add_field(name="Kills", value=f"`{formatting.pad_string(kda.get("kills"))}`", inline=True)
+        embed.add_field(name="Deaths", value=f"`{formatting.pad_string(kda.get("deaths"))}`", inline=True)
+        embed.add_field(name="Assists", value=f"`{formatting.pad_string(kda.get("assists"))}`", inline=True)
+
+        embed.add_field(name="Player Dmg", value=f"`{formatting.pad_string(stats.get("player_damage"))}`", inline=True)
+        embed.add_field(name="Obj. Dmg", value=f"`{formatting.pad_string(stats.get("boss_damage"))}`", inline=True)
+        embed.add_field(name="Healing", value=f"`{formatting.pad_string(stats.get("player_healing"))}`", inline=True)
 
 
         # response_message = f'Your Steam ID32 is `{steam_id}`.'
         # response_message += f'\nThe last hero you played (`ID: {hero_id}`) was {hero_name}.'
         await interaction.followup.send(embed=embed)
-    else:
+    elif steam_id is None:
         response_message = 'You are not linked to a Steam account. Please link your Steam ID using `/link [steam_id]`.'
+        await interaction.followup.send(response_message)
+    elif len(match_history) == 0:
+        response_message = 'Your account does not have a visible match history.'
         await interaction.followup.send(response_message)
 
     # await interaction.followup.send(response_message,embed=embed)

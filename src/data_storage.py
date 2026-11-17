@@ -5,7 +5,7 @@ import re
 
 SRC_DIR = Path(__file__).resolve().parent
 DATA_FILE = SRC_DIR.parent / "data" / "user_ids.json"
-LOCK = asyncio.Lock()
+DATA_LOCK = asyncio.Lock()
 
 STEAM_ID_DELTA = 76561197960265728
 
@@ -14,7 +14,7 @@ STEAM_ID64 = re.compile(r"^7656119\d{10}$")
 STEAM_ID3 = re.compile(r"^\[?U:1:(\d+)\]?$")
 STEAM_URL = re.compile(r"profiles/(7656119\d{10})(?:/|$)")
 
-def verify_file_exists():
+def verify_data_exists():
     try:
         with open(DATA_FILE, "x", encoding="utf-8") as file:
             json.dump({}, file)
@@ -22,7 +22,7 @@ def verify_file_exists():
         pass
 
 async def save_user(discord_id: int | str, steam_id: str):
-    async with LOCK:
+    async with DATA_LOCK:
         data = {}
 
         # Reading json to a dictionary
@@ -40,7 +40,7 @@ async def save_user(discord_id: int | str, steam_id: str):
             json.dump(data, file, indent=4)
 
 async def get_user(discord_id: int | str):
-    async with LOCK:
+    async with DATA_LOCK:
         data = {}
 
         # Reading json to a dictionary
