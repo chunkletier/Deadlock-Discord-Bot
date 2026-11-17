@@ -16,13 +16,14 @@ bot: commands.Bot = commands.Bot(command_prefix=None, intents=discord.Intents.al
 
 emojis = {}
 
+async def setup_hook():
+    app_emojis = await bot.fetch_application_emojis()
+    formatting.emojis = {emoji.name: str(emoji) for emoji in app_emojis}
+    verify_data_exists()
+
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
-    verify_data_exists()
-
-    app_emojis = await bot.fetch_application_emojis()
-    formatting.emojis = {emoji.name: str(emoji) for emoji in app_emojis}
 
     # Caution:
     # This syncs new commands to each server with the bot.
@@ -44,9 +45,6 @@ async def link(interaction: discord.Interaction, steam_id: str):
     # Allows more time for the function to execute before Discord times out the bot.
     await interaction.response.defer(ephemeral=True)
 
-    steam_id32 = ''
-    response_message = ''
-
     if parse_steam_id(steam_id) != None:
         steam_id32 = create_steam_id32(parse_steam_id(steam_id))
         response_message = f'Linked Discord account to Steam ID `{parse_steam_id(steam_id)}`.\n-# (Steam ID32 `{steam_id32}`)'
@@ -57,8 +55,8 @@ async def link(interaction: discord.Interaction, steam_id: str):
     await interaction.followup.send(response_message)
 
 @app_commands.command(name='stats', description="Returns the stats of the user's most recent Deadlock match. Must be linked.")
-async def stats(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
+async def stats(interaction: discord.Interaction, public: bool = False):
+    await interaction.response.defer(ephemeral=not public)
 
     steam_id = await get_user(interaction.user.id)
 
@@ -76,8 +74,10 @@ async def stats(interaction: discord.Interaction):
             "critical": hero_data.get("images").get("hero_card_critical"),
             "gloat": hero_data.get("images").get("hero_card_gloat")
         }
-        match_winner = await api.match_won(match_id, steam_id)
-        match_won = match_winner[0] if match_winner is not None else None
+
+        player_data = await api.get_player_data(match_id, steam_id)
+        match_won = player_data.get("won")
+
         outcome = "Deadlock"
         colour = discord.Colour.ash_embed()
         hero_card = hero_cards["normal"]
@@ -92,33 +92,57 @@ async def stats(interaction: discord.Interaction):
                 colour = discord.Colour.brand_red()
                 hero_card = hero_cards["critical"]
 
-        kda = await api.get_kda(match_id, steam_id)
-        player_metadata = await api.get_player_metadata(match_id, steam_id)
-        stats = player_metadata.get("stats")[-1]
-        souls = stats.get("net_worth")
-        mvp_rank = player_metadata.get("mvp_rank")
+        souls = player_data.get("net_worth")
+        mvp_rank = player_data.get("mvp_rank")
         mvp_text = ""
+        items = player_data.get("items")
+
+        item_id_list = []
+
+        for item in items:
+            item_id = item.get("item_id")
+            item_info = await api.make_request(f"/v1/assets/items/{item_id}")
+            item_type = item_info.get("type")
+            sold_time = item.get("sold_time_s")
+            if item_type == "upgrade" and sold_time == 0:
+                item_id_list.append(item.get("item_id"))
+
+        # item_id_list = [item.get("item_id") for item in items]
+        item_emoji_list = [await formatting.get_item_emoji(item_id, bot) for item_id in item_id_list]
+        # for item_id in item_id_list:
+        #     item_emoji_list.append(await formatting.get_item_emoji(item_id, bot))
+
         if mvp_rank is not None:
-            mvp_text = f"**[{formatting.number_suffix(player_metadata.get("mvp_rank"))}]** "
+            mvp_text = f"**[{formatting.number_suffix(player_data.get("mvp_rank"))}]** "
 
         souls_emoji = await formatting.get_emoji("souls")
 
         description = f"{souls_emoji}{formatting.format_thousands(souls)} Souls"
+        # description += f"\n{formatting.format_emoji_list(item_emoji_list)}"
+
+        # print("EMOJIS keys at embed build time:", list(formatting.emojis.keys()))
         embed = discord.Embed(
             title=f"{api.get_match_type(last_match.get("game_mode"), last_match.get("match_mode"))} ({outcome}) - {mvp_text}{hero_name}",
             description=description,
             colour=colour
         )
         embed.set_thumbnail(url=hero_card)
-        # embed.add_field(name="K/D/A", value=f"`{kda[0]} / {kda[1]} / {kda[2]}`", inline=True)
-        embed.add_field(name="Kills", value=f"`{formatting.pad_string(kda.get("kills"))}`", inline=True)
-        embed.add_field(name="Deaths", value=f"`{formatting.pad_string(kda.get("deaths"))}`", inline=True)
-        embed.add_field(name="Assists", value=f"`{formatting.pad_string(kda.get("assists"))}`", inline=True)
+        embed.add_field(name="Kills", value=f"`{formatting.pad_string(player_data.get("kills"))}`", inline=True)
+        embed.add_field(name="Deaths", value=f"`{formatting.pad_string(player_data.get("deaths"))}`", inline=True)
+        embed.add_field(name="Assists", value=f"`{formatting.pad_string(player_data.get("assists"))}`", inline=True)
 
-        embed.add_field(name="Player Dmg", value=f"`{formatting.pad_string(stats.get("player_damage"))}`", inline=True)
-        embed.add_field(name="Obj. Dmg", value=f"`{formatting.pad_string(stats.get("boss_damage"))}`", inline=True)
-        embed.add_field(name="Healing", value=f"`{formatting.pad_string(stats.get("player_healing"))}`", inline=True)
+        embed.add_field(name="Player Dmg", value=f"`{formatting.pad_string(
+            f'{player_data.get("player_damage"):,}'
+        )}`", inline=True)
+        embed.add_field(name="Obj. Dmg", value=f"`{formatting.pad_string(
+            f'{player_data.get("boss_damage"):,}'
+        )}`", inline=True)
+        embed.add_field(name="Healing", value=f"`{formatting.pad_string(
+            f'{player_data.get("player_healing"):,}'
+        )}`", inline=True)
 
+        # embed.add_field(name="Items", value=formatting.format_emoji_list(item_emoji_list), inline=False)
+        embed.add_field(name="Items", value=f"{" ".join(item_emoji_list)}", inline=False)
 
         # response_message = f'Your Steam ID32 is `{steam_id}`.'
         # response_message += f'\nThe last hero you played (`ID: {hero_id}`) was {hero_name}.'
@@ -131,6 +155,8 @@ async def stats(interaction: discord.Interaction):
         await interaction.followup.send(response_message)
 
     # await interaction.followup.send(response_message,embed=embed)
+
+bot.setup_hook = setup_hook
 
 # Adds the command associated with the given function.
 bot.tree.add_command(link)

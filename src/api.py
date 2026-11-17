@@ -11,98 +11,72 @@ async def make_request(directory: str, parameters: dict | None = None):
                 return None
             return await response.json()
 
+MATCH_MODES = {
+    0: "Invalid",
+    1: "Unranked",
+    2: "Private Lobby",
+    3: "Co-op Bot Match",
+    4: "Ranked",
+    5: "Server Test",
+    6: "Tutorial",
+    7: "Hero Labs",
+    8: "New Player Placement"
+}
+
+GAME_MODES = {
+    0: "Invalid",
+    1: "Standard",
+    2: "1v1 Test",
+    3: "Sandbox",
+    4: "Street Brawl",
+    5: "Explore NYC",
+    6: "Internal",
+    7: "Internal 02"
+}
+
 def get_match_type(game_mode: int, match_mode: int) -> str:
-    game_type = ""
-    match_type = ""
-
-    match match_mode:
-        case 0:
-            match_type = "Invalid"
-            return match_type
-        case 1:
-            match_type = "Unranked"
-        case 2:
-            match_type = "Private Lobby"
-        case 3:
-            match_type = "Co-op Bot Match"
-        case 4:
-            match_type = "Ranked"
-            return match_type
-        case 5:
-            match_type = "Server Test"
-            return match_type
-        case 6:
-            match_type = "Tutorial"
-            return match_type
-        case 7:
-            match_type = "Hero Labs"
-            return match_type
-        case 8:
-            match_type = "New Player Placement"
-            return match_type
-
-    match game_mode:
-        case 0:
-            game_type = "Invalid"
-            return game_type
-        case 1:
-            game_type = "Standard"
-        case 2:
-            game_type = "1v1 Test"
-        case 3:
-            game_type = "Sandbox"
-            return game_type
-        case 4:
-            game_type = "Street Brawl"
-        case 5:
-            game_type = "Explore NYC"
-            return game_type
-        case 6:
-            game_type = "Internal"
-        case 7:
-            game_type = "Internal 02"
+    if match_mode in [0, 4, 5, 6, 7, 8]:
+        return MATCH_MODES.get(match_mode, "")
+    if game_mode in [0, 3, 5]:
+        return GAME_MODES.get(game_mode, "")
 
     if match_mode == 1:
-        return game_type
-    else:
-        return match_type + game_type
+        return GAME_MODES.get(game_mode, "")
 
-async def match_won(match_id: int, account_id: int) -> list | None:
-    metadata = await make_request(f"/v1/matches/{match_id}/metadata", None)
-    match_info = metadata.get("match_info")
-    winning_team = match_info.get("winning_team")
+async def get_player_data(match_id: int, account_id: int) -> dict | None:
+    match_metadata = await make_request(f"/v1/matches/{match_id}/metadata")
+
+    if not match_metadata:
+        return None
+
+    match_info = match_metadata.get("match_info")
     players = match_info.get("players")
+    winning_team = match_info.get("winning_team")
 
     for player in players:
         if player.get("account_id") == int(account_id):
             player_team = player.get("team")
-            return [winning_team == player_team, player_team]
+            return {
+                "metadata": player,
+                "team": player_team,
+                "won": player_team == winning_team,
+                "stats": player.get("stats")[-1],
+                "net_worth": player.get("net_worth"),
+                "mvp_rank": player.get("mvp_rank"),
+                "kills": player.get("kills"),
+                "deaths": player.get("deaths"),
+                "assists": player.get("assists"),
+                "player_damage": player.get("stats")[-1].get("player_damage"),
+                "boss_damage": player.get("stats")[-1].get("boss_damage"),
+                "player_healing": player.get("stats")[-1].get("player_healing"),
+                "items": player.get("items")
+            }
 
     return None
 
-async def get_kda(match_id: int, account_id: int) -> dict:
-    metadata = await make_request(f"/v1/matches/{match_id}/metadata", None)
-    match_info = metadata.get("match_info")
-    players = match_info.get("players")
+async def get_all_items() -> list[dict] | None:
+    return await make_request("/v1/assets/items/by-type/upgrade")
 
-    for player in players:
-        if player.get("account_id") == int(account_id):
-            return {"kills": player.get("kills"),
-                    "deaths": player.get("deaths"),
-                    "assists": player.get("assists")}
-
-    return {"kills": None,
-            "deaths": None,
-            "assists": None}
-
-async def get_player_metadata(match_id: int, account_id: int):
-    metadata = await make_request(f"/v1/matches/{match_id}/metadata", None)
-    match_info = metadata.get("match_info")
-    players = match_info.get("players")
-
-    for player in players:
-        if player.get("account_id") == int(account_id):
-            return player
-
-    return None
-
+async def get_item_icon_url(item_id: int) -> str | None:
+    item = await make_request(f"/v1/assets/items/{item_id}")
+    return item.get("shop_image")
