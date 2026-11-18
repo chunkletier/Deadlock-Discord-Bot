@@ -25,6 +25,8 @@ async def setup_hook():
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
 
+    # verify_data_exists()
+
     # Caution:
     # This syncs new commands to each server with the bot.
     # Running the following code repeatedly can get the bot rate limited.
@@ -47,8 +49,10 @@ async def link(interaction: discord.Interaction, steam_id: str):
 
     if parse_steam_id(steam_id) != None:
         steam_id32 = create_steam_id32(parse_steam_id(steam_id))
-        response_message = f'Linked Discord account to Steam ID `{parse_steam_id(steam_id)}`.\n-# (Steam ID32 `{steam_id32}`)'
-        await save_user(interaction.user.id, steam_id32)
+        if (await save_user(interaction.user.id, steam_id32)):
+            response_message = f'Linked Discord account to Steam ID `{parse_steam_id(steam_id)}`.\n-# (Steam ID32 `{steam_id32}`)'
+        else:
+            response_message = f'Steam ID already linked to an account.'
     else:
         response_message = 'Invalid Steam ID. Please enter a valid SteamID64, SteamID3, or ID-containing profile link.'
 

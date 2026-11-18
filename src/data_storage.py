@@ -4,7 +4,8 @@ from pathlib import Path
 import re
 
 SRC_DIR = Path(__file__).resolve().parent
-DATA_FILE = SRC_DIR.parent / "data" / "user_ids.json"
+DATA_DIR = SRC_DIR.parent / "data"
+DATA_FILE = DATA_DIR / "user_ids.json"
 DATA_LOCK = asyncio.Lock()
 
 STEAM_ID_DELTA = 76561197960265728
@@ -16,14 +17,16 @@ STEAM_URL = re.compile(r"profiles/(7656119\d{10})(?:/|$)")
 
 def verify_data_exists():
     try:
+        Path(DATA_DIR).mkdir(exist_ok=True)
         with open(DATA_FILE, "x", encoding="utf-8") as file:
             json.dump({}, file)
     except FileExistsError:
         pass
 
-async def save_user(discord_id: int | str, steam_id: str):
+async def save_user(discord_id: int | str, steam_id: str) -> bool:
     async with DATA_LOCK:
         data = {}
+        steam_id_available = True
 
         # Reading json to a dictionary
         with open(DATA_FILE, "r", encoding="utf-8") as file:
@@ -32,12 +35,19 @@ async def save_user(discord_id: int | str, steam_id: str):
             except json.JSONDecodeError:
                 data = {}
 
+        for key, value in data.items():
+            if value == steam_id:
+                steam_id_available = False
+
         # Create new entry / Update existing entry
-        data[str(discord_id)] = str(steam_id)
+        if steam_id_available:
+            data[str(discord_id)] = str(steam_id)
 
         # Writing dictionary to json
         with open(DATA_FILE, "w", encoding="utf-8") as file:
             json.dump(data, file, indent=4)
+
+        return steam_id_available
 
 async def get_user(discord_id: int | str):
     async with DATA_LOCK:
