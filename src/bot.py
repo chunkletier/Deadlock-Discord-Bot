@@ -12,7 +12,8 @@ load_dotenv()
 intents = discord.Intents.default()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
-bot: commands.Bot = commands.Bot(command_prefix=None, intents=discord.Intents.all())
+bot: commands.Bot = commands.Bot(command_prefix=None, intents=discord.Intents.all(),
+                                 allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True))
 
 emojis = {}
 
@@ -98,8 +99,24 @@ async def stats(interaction: discord.Interaction, public: bool = False):
 
         souls = player_data.get("net_worth")
         mvp_rank = player_data.get("mvp_rank")
-        mvp_text = ""
+        mvp_title = ""
+        mvp_image = None
+        mvp_image_name = ""
         items = player_data.get("items")
+
+        match_duration_s = player_data.get("stats").get("time_stamp_s")
+
+        minutes, seconds = divmod(match_duration_s, 60)
+
+        if mvp_rank is not None:
+            if mvp_rank == 1:
+                mvp_title = "MVP"
+                mvp_image_name = "mvp_trophy.png"
+                mvp_image = formatting.get_image_file("mvp_trophy.png")
+            else:
+                mvp_title = "Key Player"
+                mvp_image_name = "key_player_trophy.png"
+                mvp_image = formatting.get_image_file("key_player_trophy.png")
 
         item_id_list = []
 
@@ -111,22 +128,15 @@ async def stats(interaction: discord.Interaction, public: bool = False):
             if item_type == "upgrade" and sold_time == 0:
                 item_id_list.append(item.get("item_id"))
 
-        # item_id_list = [item.get("item_id") for item in items]
         item_emoji_list = [await formatting.get_item_emoji(item_id, bot) for item_id in item_id_list]
-        # for item_id in item_id_list:
-        #     item_emoji_list.append(await formatting.get_item_emoji(item_id, bot))
-
-        if mvp_rank is not None:
-            mvp_text = f"**[{formatting.number_suffix(player_data.get("mvp_rank"))}]** "
 
         souls_emoji = await formatting.get_emoji("souls")
 
-        description = f"{souls_emoji}{formatting.format_thousands(souls)} Souls"
-        # description += f"\n{formatting.format_emoji_list(item_emoji_list)}"
+        description = f"**[ {hero_name} ]** {souls_emoji}{formatting.format_thousands(souls)} Souls"
 
         # print("EMOJIS keys at embed build time:", list(formatting.emojis.keys()))
         embed = discord.Embed(
-            title=f"{api.get_match_type(last_match.get("game_mode"), last_match.get("match_mode"))} ({outcome}) - {mvp_text}{hero_name}",
+            title=f"{api.get_match_type(last_match.get("game_mode"), last_match.get("match_mode"))} ({outcome}) - {minutes}:{seconds:02d}",
             description=description,
             colour=colour
         )
@@ -148,9 +158,15 @@ async def stats(interaction: discord.Interaction, public: bool = False):
         # embed.add_field(name="Items", value=formatting.format_emoji_list(item_emoji_list), inline=False)
         embed.add_field(name="Items", value=f"{" ".join(item_emoji_list)}", inline=False)
 
-        # response_message = f'Your Steam ID32 is `{steam_id}`.'
-        # response_message += f'\nThe last hero you played (`ID: {hero_id}`) was {hero_name}.'
-        await interaction.followup.send(embed=embed)
+        if mvp_rank is not None and mvp_image is not None:
+            embed.set_footer(
+                text=f"[ {mvp_title} ]",
+                icon_url=f"attachment://{mvp_image_name}"
+            )
+
+            await interaction.followup.send(embed=embed, file=mvp_image)
+        else:
+            await interaction.followup.send(embed=embed)
     elif steam_id is None:
         response_message = 'You are not linked to a Steam account. Please link your Steam ID using `/link [steam_id]`.'
         await interaction.followup.send(response_message)

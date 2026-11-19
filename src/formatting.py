@@ -1,6 +1,7 @@
 import discord
 import api
 import aiohttp
+from pathlib import Path
 
 emojis: dict[str, str] = {}
 
@@ -64,3 +65,10 @@ def format_emoji_list(emoji_list: list) -> str:
     emoji_list_str = emoji_list_str[:-1]
 
     return emoji_list_str
+
+def get_image_file(file_name: str) -> discord.File:
+    SRC_DIR = Path(__file__).resolve().parent
+    ASSETS_DIR = SRC_DIR.parent / "assets"
+    ASSETS_FILE = ASSETS_DIR / file_name
+
+    return discord.File(ASSETS_FILE, filename=file_name)
