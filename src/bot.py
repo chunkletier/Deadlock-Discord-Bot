@@ -26,8 +26,6 @@ async def setup_hook():
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
 
-    # verify_data_exists()
-
     # Caution:
     # This syncs new commands to each server with the bot.
     # Running the following code repeatedly can get the bot rate limited.
