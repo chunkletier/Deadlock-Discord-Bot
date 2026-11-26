@@ -24,7 +24,7 @@ The "stats" command (shown below) is relatively straightforward in its functiona
 
 ## Setup
 
-Check that you have Python installed on your device. If you don't, you can find the installer on [python.org](www.python.org).
+Check that you have Python installed on your device. If you don't, you can find the installer on python.org.
 Next, set up a bot on the Discord Developer Portal and take note of the bot token as you'll need it for setup.
 Now, you can clone the repository and create the `.env` file.
 ```bash
