@@ -46,8 +46,10 @@ async def link(interaction: discord.Interaction, steam_id: str):
     # Allows more time for the function to execute before Discord times out the bot.
     await interaction.response.defer(ephemeral=True)
 
+    # If SteamID is valid
     if parse_steam_id(steam_id) != None:
         steam_id32 = create_steam_id32(parse_steam_id(steam_id))
+        # If SteamID is available
         if (await save_user(interaction.user.id, steam_id32)):
             response_message = f'Linked Discord account to Steam ID `{parse_steam_id(steam_id)}`.\n-# (Steam ID32 `{steam_id32}`)'
         else:
@@ -65,10 +67,12 @@ async def stats(interaction: discord.Interaction, public: bool = False):
 
     match_history = (await api.make_request(f"/v1/players/{create_steam_id3(steam_id)}/match-history"))
 
-    # Eventually improve handling None values and exceptions
     if steam_id is not None and len(match_history) != 0:
+        # Retrieving last match
         last_match = (await api.make_request(f"/v1/players/{create_steam_id3(steam_id)}/match-history"))[0]
         match_id = last_match.get("match_id")
+
+        # Retrieving hero info
         hero_id = last_match.get("hero_id")
         hero_info = await api.make_request(f"/v1/assets/heroes/{hero_id}")
         hero_name = hero_info.get("name")
@@ -78,13 +82,16 @@ async def stats(interaction: discord.Interaction, public: bool = False):
             "gloat": hero_info.get("images").get("hero_card_gloat")
         }
 
+        # Getting user's data from last match
         player_data = await api.get_player_data(match_id, steam_id)
         match_won = player_data.get("won")
 
+        # Default embed params
         outcome = "Deadlock"
         colour = discord.Colour.ash_embed()
         hero_card = hero_cards["normal"]
 
+        # Formatting embed params for win/loss
         if match_won is not None:
             if match_won:
                 outcome = "Victory"
@@ -95,17 +102,17 @@ async def stats(interaction: discord.Interaction, public: bool = False):
                 colour = discord.Colour.brand_red()
                 hero_card = hero_cards["critical"]
 
-        souls = player_data.get("net_worth")
+        # Default MVP data
         mvp_rank = player_data.get("mvp_rank")
         mvp_title = ""
         mvp_image = None
         mvp_image_name = ""
-        items = player_data.get("items")
 
+        # Formatting match duration into minutes and seconds
         match_duration_s = player_data.get("stats").get("time_stamp_s")
-
         minutes, seconds = divmod(match_duration_s, 60)
 
+        # Formatting MVP data
         if mvp_rank is not None:
             if mvp_rank == 1:
                 mvp_title = "MVP"
@@ -116,6 +123,8 @@ async def stats(interaction: discord.Interaction, public: bool = False):
                 mvp_image_name = "key_player_trophy.png"
                 mvp_image = formatting.get_image_file("key_player_trophy.png")
 
+        # Creating item ID list from owned items
+        items = player_data.get("items")
         item_id_list = []
 
         for item in items:
@@ -126,13 +135,15 @@ async def stats(interaction: discord.Interaction, public: bool = False):
             if item_type == "upgrade" and sold_time == 0:
                 item_id_list.append(item.get("item_id"))
 
+        # Create emoji list from item id list
         item_emoji_list = [await formatting.get_item_emoji(item_id, bot) for item_id in item_id_list]
 
+        # Creating embed description
         souls_emoji = await formatting.get_emoji("souls")
-
+        souls = player_data.get("net_worth")
         description = f"**[ {hero_name} ]** {souls_emoji}{formatting.format_thousands(souls)} Souls"
 
-        # print("EMOJIS keys at embed build time:", list(formatting.emojis.keys()))
+        # Building embed
         embed = discord.Embed(
             title=f"{api.get_match_type(last_match.get("game_mode"), last_match.get("match_mode"))} ({outcome}) - {minutes}:{seconds:02d}",
             description=description,
@@ -153,9 +164,9 @@ async def stats(interaction: discord.Interaction, public: bool = False):
             f'{player_data.get("player_healing"):,}'
         )}`", inline=True)
 
-        # embed.add_field(name="Items", value=formatting.format_emoji_list(item_emoji_list), inline=False)
         embed.add_field(name="Items", value=f"{" ".join(item_emoji_list)}", inline=False)
 
+        # Footer text if MVP rank exists
         if mvp_rank is not None and mvp_image is not None:
             embed.set_footer(
                 text=f"[ {mvp_title} ]",
@@ -182,17 +193,15 @@ async def hero(interaction: discord.Interaction, name: str, public: bool = False
 
     match_history = (await api.make_request(f"/v1/players/{create_steam_id3(steam_id)}/match-history"))
 
-    # await interaction.followup.send(f'SteamID: {steam_id}, Match History Length: {len(match_history)}')
-
-    # Eventually improve handling None values and exceptions
     if steam_id is not None and len(match_history) != 0:
-
         hero_info = await api.make_request(f"/v1/assets/heroes/by-name/{name}")
 
+        # Check valid hero name
         if hero_info is None or hero_info.get("status") == 404:
             response_message = f'Invalid hero name. Please try again.'
             await interaction.followup.send(response_message, ephemeral=True)
         else:
+            # Retreive hero info
             hero_id = hero_info.get("id")
             hero_name = hero_info.get("name")
             hero_cards = {
@@ -202,24 +211,29 @@ async def hero(interaction: discord.Interaction, name: str, public: bool = False
             }
             hero_card = hero_cards.get("normal")
 
+            # Get hero stats from user
             hero_dict = await api.make_request("/v1/players/hero-stats",
                                          parameters={
                                             "account_ids": steam_id,
                                             "hero_ids": hero_id
                                          }
                                         )
+            # If hero has no stats
             if len(hero_dict) == 0:
                 response_message = 'No match history for the specified hero.'
                 await interaction.followup.send(response_message, ephemeral=True)
             else:
                 hero_data = hero_dict[0]
 
+                # Create embed color from hero ui color
                 rgb = hero_info.get("colors").get("ui")
                 hero_color = discord.Color.from_rgb(rgb[0], rgb[1], rgb[2])
-                souls_emoji = await formatting.get_emoji("souls")
 
+                # Creating embed description
+                souls_emoji = await formatting.get_emoji("souls")
                 description = f"**[ {hero_name} ]** {souls_emoji}{hero_data.get("networth_per_min"):,.0f} Souls/min"
 
+                # Building embed
                 embed = discord.Embed(
                     title=f'Hero Stats',
                     description=description,
