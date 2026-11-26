@@ -71,10 +71,9 @@ While the script is running, the bot will be online and responsive to commands. 
 
 ![Example Run](docs/example.png)
 
-[//]: # (## Demo)
+## Demo
 
-[//]: # ()
-[//]: # (The demo video is currently unavailable.)
+https://youtu.be/PE6NsCivZ9s
 
 ## Roadmap
 
