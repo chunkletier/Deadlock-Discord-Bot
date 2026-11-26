@@ -26,17 +26,25 @@ The "stats" command (shown below) is relatively straightforward in its functiona
 
 Check that you have Python installed on your device. If you don't, you can find the installer on [python.org](www.python.org).
 Next, set up a bot on the Discord Developer Portal and take note of the bot token as you'll need it for setup.
-
+Now, you can clone the repository and create the `.env` file.
 ```bash
 git clone https://github.com/chunkletier/Deadlock-Discord-Bot
 cd Deadlock-Discord-Bot
-pip install -r requirements.txt
 
 # Windows
 echo 'DISCORD_TOKEN="[Your Token]"' | Out-File -FilePath .env -Encoding utf8
 
 # Mac / Linux
 echo 'DISCORD_TOKEN="[Your Token]"' > .env
+```
+Next, you need to generate the Python virtual environment for the project. Make sure that this is done in the bot's root directory.
+```bash
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+
+# If .venv\Scripts\Activate.ps1 does not run (Windows):
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 ```
 
 **Note:** For the first time you run the bot, you will need to uncomment the code block at the bottom of the `on_ready()` function in `bot.py`:
@@ -55,7 +63,7 @@ This registers the commands in `bot.py` with the Discord bot. After it has run o
 
 In order to use the bot, first add it to your Discord server of choice. To start it, run the following terminal command in the bot directory:
 ```bash
-python .\src\bot.py
+.\.venv\Scripts\python.exe src\bot.py
 ```
 While the script is running, the bot will be online and responsive to commands. When it's not, the bot will be offline and unresponsive.
 
@@ -73,7 +81,7 @@ While the script is running, the bot will be online and responsive to commands. 
 - [ ] Automated match stats
 - [ ] Statistic trends
 - [ ] Career statistics
-- [ ] Hero statistics
+- [X] Hero statistics
 - [ ] Match stats timeline
 
 ## Author
