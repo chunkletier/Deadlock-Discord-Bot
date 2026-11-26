@@ -12,7 +12,7 @@ load_dotenv()
 intents = discord.Intents.default()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
-bot: commands.Bot = commands.Bot(command_prefix=None, intents=discord.Intents.all(),
+bot: commands.Bot = commands.Bot(command_prefix=commands.when_mentioned, intents=discord.Intents.all(),
                                  allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True))
 
 emojis = {}
@@ -70,12 +70,12 @@ async def stats(interaction: discord.Interaction, public: bool = False):
         last_match = (await api.make_request(f"/v1/players/{create_steam_id3(steam_id)}/match-history"))[0]
         match_id = last_match.get("match_id")
         hero_id = last_match.get("hero_id")
-        hero_data = await api.make_request(f"/v1/assets/heroes/{hero_id}")
-        hero_name = hero_data.get("name")
+        hero_info = await api.make_request(f"/v1/assets/heroes/{hero_id}")
+        hero_name = hero_info.get("name")
         hero_cards = {
-            "normal": hero_data.get("images").get("icon_hero_card"),
-            "critical": hero_data.get("images").get("hero_card_critical"),
-            "gloat": hero_data.get("images").get("hero_card_gloat")
+            "normal": hero_info.get("images").get("icon_hero_card"),
+            "critical": hero_info.get("images").get("hero_card_critical"),
+            "gloat": hero_info.get("images").get("hero_card_gloat")
         }
 
         player_data = await api.get_player_data(match_id, steam_id)
@@ -167,18 +167,124 @@ async def stats(interaction: discord.Interaction, public: bool = False):
             await interaction.followup.send(embed=embed)
     elif steam_id is None:
         response_message = 'You are not linked to a Steam account. Please link your Steam ID using `/link [steam_id]`.'
-        await interaction.followup.send(response_message)
+        await interaction.followup.send(response_message, ephemeral=True)
     elif len(match_history) == 0:
         response_message = 'Your account does not have a visible match history.'
-        await interaction.followup.send(response_message)
+        await interaction.followup.send(response_message, ephemeral=True)
 
     # await interaction.followup.send(response_message,embed=embed)
+
+@app_commands.command(name="hero", description="Returns an overview of a specified hero's statistics.")
+async def hero(interaction: discord.Interaction, name: str, public: bool = False):
+    await interaction.response.defer(ephemeral=not public)
+
+    steam_id = await get_user(interaction.user.id)
+
+    match_history = (await api.make_request(f"/v1/players/{create_steam_id3(steam_id)}/match-history"))
+
+    # await interaction.followup.send(f'SteamID: {steam_id}, Match History Length: {len(match_history)}')
+
+    # Eventually improve handling None values and exceptions
+    if steam_id is not None and len(match_history) != 0:
+
+        hero_info = await api.make_request(f"/v1/assets/heroes/by-name/{name}")
+
+        if hero_info is None or hero_info.get("status") == 404:
+            response_message = f'Invalid hero name. Please try again.'
+            await interaction.followup.send(response_message, ephemeral=True)
+        else:
+            hero_id = hero_info.get("id")
+            hero_name = hero_info.get("name")
+            hero_cards = {
+                "normal": hero_info.get("images").get("icon_hero_card"),
+                "critical": hero_info.get("images").get("hero_card_critical"),
+                "gloat": hero_info.get("images").get("hero_card_gloat")
+            }
+            hero_card = hero_cards.get("normal")
+
+            hero_dict = await api.make_request("/v1/players/hero-stats",
+                                         parameters={
+                                            "account_ids": steam_id,
+                                            "hero_ids": hero_id
+                                         }
+                                        )
+            if len(hero_dict) == 0:
+                response_message = 'No match history for the specified hero.'
+                await interaction.followup.send(response_message, ephemeral=True)
+            else:
+                hero_data = hero_dict[0]
+
+                rgb = hero_info.get("colors").get("ui")
+                hero_color = discord.Color.from_rgb(rgb[0], rgb[1], rgb[2])
+                souls_emoji = await formatting.get_emoji("souls")
+
+                description = f"**[ {hero_name} ]** {souls_emoji}{hero_data.get("networth_per_min"):,.0f} Souls/min"
+
+                embed = discord.Embed(
+                    title=f'Hero Stats',
+                    description=description,
+                    colour=hero_color
+                )
+
+                embed.add_field(name="__Career Stats__", value="Statistics averaged over the span of your\ncareer with the character.", inline=False)
+
+                embed.set_thumbnail(url=hero_card)
+
+
+                embed.add_field(name="Matches", value=f"`{formatting.pad_string(
+                    f'{hero_data.get("matches_played"):,}'
+                )}`", inline=True)
+
+                # embed.add_field(name="Wins", value=f"`{formatting.pad_string(
+                #     f'{hero_data.get("wins"):,}'
+                # )}`", inline=True)
+                # embed.add_field(name="Losses", value=f"`{formatting.pad_string(
+                #     f'{(hero_data.get("matches_played") - hero_data.get("wins")):,}'
+                # )}`", inline=True)
+
+                embed.add_field(name="Win Rate", value=f"`{formatting.pad_string(
+                    f'{((hero_data.get("wins") / hero_data.get("matches_played")) * 100):.1f}%'
+                )}`", inline=True)
+
+                embed.add_field(name="Time Played", value=f"`{formatting.pad_string(
+                    f'{(hero_data.get("time_played") / 3600):.0f} hrs'
+                )}`", inline=True)
+
+                embed.add_field(name="__Average Stats__", value="Statistics averaged per match or minute.", inline=False)
+
+                embed.add_field(name="Kills ", value=f"`{formatting.pad_string(
+                    f'{(hero_data.get("kills") / hero_data.get("matches_played")):.0f}'
+                )}`", inline=True)
+                embed.add_field(name="Deaths", value=f"`{formatting.pad_string(
+                    f'{(hero_data.get("deaths") / hero_data.get("matches_played")):.0f}'
+                )}`", inline=True)
+                embed.add_field(name="Assists", value=f"`{formatting.pad_string(
+                    f'{(hero_data.get("assists") / hero_data.get("matches_played")):.0f}'
+                )}`", inline=True)
+
+                embed.add_field(name="Player Dmg", value=f"`{formatting.pad_string(
+                    f'{hero_data.get("damage_per_min"):,.0f}/min'
+                )}`", inline=True)
+                embed.add_field(name="Obj. Dmg", value=f"`{formatting.pad_string(
+                    f'{hero_data.get("obj_damage_per_min"):,.0f}/min'
+                )}`", inline=True)
+                embed.add_field(name="Accuracy", value=f"`{formatting.pad_string(
+                    f'{(hero_data.get("accuracy") * 100):,.1f}%'
+                )}`", inline=True)
+
+                await interaction.followup.send(embed=embed)
+    elif steam_id is None:
+        response_message = 'You are not linked to a Steam account. Please link your Steam ID using `/link [steam_id]`.'
+        await interaction.followup.send(response_message, ephemeral=True)
+    elif len(match_history) == 0:
+        response_message = 'Your account does not have a visible match history.'
+        await interaction.followup.send(response_message, ephemeral=True)
 
 bot.setup_hook = setup_hook
 
 # Adds the command associated with the given function.
 bot.tree.add_command(link)
 bot.tree.add_command(stats)
-
+bot.tree.add_command(hero)
 
 bot.run(DISCORD_TOKEN)
